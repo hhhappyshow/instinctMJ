@@ -57,6 +57,18 @@ def _perceptive_vae_play_env_cfg():
     return G1PerceptiveVaeEnvCfg_PLAY()
 
 
+def _perceptive_smoke_env_cfg():
+    from .perceptive_smoke_cfg import G1PerceptiveShadowingSmokeEnvCfg
+
+    return G1PerceptiveShadowingSmokeEnvCfg()
+
+
+def _perceptive_smoke_play_env_cfg():
+    from .perceptive_smoke_cfg import G1PerceptiveShadowingSmokeEnvCfg_PLAY
+
+    return G1PerceptiveShadowingSmokeEnvCfg_PLAY()
+
+
 register_instinct_task(
     task_id="Instinct-Perceptive-Shadowing-G1-v0",
     env_cfg_factory=_perceptive_shadowing_env_cfg,
@@ -97,4 +109,18 @@ register_instinct_task(
     env_cfg_factory=_perceptive_vae_play_env_cfg,
     play_env_cfg_factory=_perceptive_vae_play_env_cfg,
     instinct_rl_cfg_factory=g1_perceptive_vae_instinct_rl_cfg,
+)
+
+register_instinct_task(
+    task_id="Instinct-Perceptive-Shadowing-G1-Smoke-v0",
+    env_cfg_factory=_perceptive_smoke_env_cfg,
+    play_env_cfg_factory=_perceptive_smoke_play_env_cfg,
+    instinct_rl_cfg_factory=g1_perceptive_shadowing_one_motion_instinct_rl_cfg,
+)
+
+register_instinct_task(
+    task_id="Instinct-Perceptive-Shadowing-G1-Smoke-Play-v0",
+    env_cfg_factory=_perceptive_smoke_play_env_cfg,
+    play_env_cfg_factory=_perceptive_smoke_play_env_cfg,
+    instinct_rl_cfg_factory=g1_perceptive_shadowing_one_motion_instinct_rl_cfg,
 )
