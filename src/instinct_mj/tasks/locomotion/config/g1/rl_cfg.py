@@ -66,3 +66,15 @@ class G1FlatPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
 
 def g1_locomotion_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
     return G1FlatPPORunnerCfg()
+
+
+def g1_locomotion_rough_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
+    cfg = G1FlatPPORunnerCfg()
+    cfg.experiment_name = "g1_locomotion_rough"
+    return cfg
+
+
+def g1_locomotion_rough_raycast_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
+    cfg = G1FlatPPORunnerCfg()
+    cfg.experiment_name = "g1_locomotion_rough_raycast"
+    return cfg

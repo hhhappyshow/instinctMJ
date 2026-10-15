@@ -21,6 +21,12 @@ def g1_perceptive_vae_instinct_rl_cfg():
     return _cfg()
 
 
+def g1_perceptive_raycast_instinct_rl_cfg():
+    from .rl_cfg import g1_perceptive_raycast_instinct_rl_cfg as _cfg
+
+    return _cfg()
+
+
 def _perceptive_shadowing_env_cfg():
     from .perceptive_shadowing_cfg import G1PerceptiveShadowingEnvCfg
 
@@ -123,4 +129,31 @@ register_instinct_task(
     env_cfg_factory=_perceptive_smoke_play_env_cfg,
     play_env_cfg_factory=_perceptive_smoke_play_env_cfg,
     instinct_rl_cfg_factory=g1_perceptive_shadowing_one_motion_instinct_rl_cfg,
+)
+
+
+def _perceptive_raycast_env_cfg():
+    from .perceptive_raycast_cfg import G1PerceptiveShadowingRayCasterEnvCfg
+
+    return G1PerceptiveShadowingRayCasterEnvCfg()
+
+
+def _perceptive_raycast_play_env_cfg():
+    from .perceptive_raycast_cfg import G1PerceptiveShadowingRayCasterEnvCfg_PLAY
+
+    return G1PerceptiveShadowingRayCasterEnvCfg_PLAY()
+
+
+register_instinct_task(
+    task_id="Instinct-Perceptive-Shadowing-G1-RayCaster-v0",
+    env_cfg_factory=_perceptive_raycast_env_cfg,
+    play_env_cfg_factory=_perceptive_raycast_play_env_cfg,
+    instinct_rl_cfg_factory=g1_perceptive_raycast_instinct_rl_cfg,
+)
+
+register_instinct_task(
+    task_id="Instinct-Perceptive-Shadowing-G1-RayCaster-Play-v0",
+    env_cfg_factory=_perceptive_raycast_play_env_cfg,
+    play_env_cfg_factory=_perceptive_raycast_play_env_cfg,
+    instinct_rl_cfg_factory=g1_perceptive_raycast_instinct_rl_cfg,
 )

@@ -362,3 +362,34 @@ def g1_perceptive_shadowing_one_motion_instinct_rl_cfg() -> InstinctRlOnPolicyRu
 
 def g1_perceptive_vae_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
     return G1PerceptiveVaePPORunnerCfg()
+
+
+@dataclass(kw_only=True)
+class RayCasterPolicyCfg(InstinctRlActorCriticCfg):
+    """MLP over the flattened proprio, motion-reference, and height-scan vector."""
+
+    init_noise_std: float = 1.0
+    actor_hidden_dims: tuple[int, ...] = (256, 128, 128)
+    critic_hidden_dims: tuple[int, ...] = (256, 128, 128)
+    activation: str = "elu"
+
+
+@dataclass(kw_only=True)
+class G1PerceptiveRayCasterPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
+    policy: RayCasterPolicyCfg = field(default_factory=RayCasterPolicyCfg)
+    algorithm: AlgorithmCfg = field(default_factory=AlgorithmCfg)
+    normalizers: NormalizersCfg = field(default_factory=NormalizersCfg)
+    num_steps_per_env: int = 24
+    max_iterations: int = 50000
+    save_interval: int = 1000
+    log_interval: int = 10
+    experiment_name: str = "g1_perceptive_shadowing_raycast"
+    load_run: object | None = None
+
+    def __post_init__(self):
+        self.resume = self.load_run is not None
+        self.run_name = ""
+
+
+def g1_perceptive_raycast_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
+    return G1PerceptiveRayCasterPPORunnerCfg()
