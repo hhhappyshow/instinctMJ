@@ -15,7 +15,7 @@ import torch
 from instinct_rl.runners import OnPolicyRunner
 
 import instinct_mj.tasks  # noqa: F401
-from instinct_mj.perception.height_scan import HEIGHT_SCAN_MASK_VALUE
+from instinct_mj.perception.height_scan import apply_scan_ablation
 from instinct_mj.rl import InstinctRlVecEnvWrapper
 from instinct_mj.tasks.locomotion.config.g1.rough_env_cfg import TERRAIN_COLUMN_NAMES
 from instinct_mj.tasks.registry import load_env_cfg, load_env_cls, load_instinct_rl_cfg
@@ -38,7 +38,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--wz", type=float, default=0.0)
     parser.add_argument("--episodes", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=100)
-    parser.add_argument("--ablation", choices=("normal", "masked"), default="normal")
+    parser.add_argument("--ablation", choices=("normal", "masked", "noisy", "delayed"), default="normal")
+    parser.add_argument("--noise-std", type=float, default=0.05)
+    parser.add_argument("--delay-steps", type=int, default=5)
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -75,12 +77,27 @@ def _place_terrain(env, terrain: str, level: int) -> None:
     terrain_entity.env_origins[:] = terrain_entity.terrain_origins[level, column]
 
 
-def _apply_ablation(obs: torch.Tensor, height_slice: slice | None, ablation: str) -> torch.Tensor:
+def _apply_ablation(
+    obs: torch.Tensor,
+    height_slice: slice | None,
+    ablation: str,
+    *,
+    noise_std: float,
+    delay_steps: int,
+    history: list[torch.Tensor],
+) -> torch.Tensor:
     if ablation == "normal" or height_slice is None:
         return obs
-    masked = obs.clone()
-    masked[:, height_slice] = HEIGHT_SCAN_MASK_VALUE
-    return masked
+    current = obs[:, height_slice]
+    if ablation == "delayed":
+        history.append(current.detach().clone())
+        index = max(0, len(history) - 1 - delay_steps)
+        replacement = history[index]
+    else:
+        replacement = apply_scan_ablation(current, ablation, noise_std=noise_std)
+    updated = obs.clone()
+    updated[:, height_slice] = replacement
+    return updated
 
 
 def main() -> None:
@@ -106,8 +123,8 @@ def main() -> None:
         raise SystemExit("raycaster actor has no height_scan segment")
     if args.variant == "baseline" and height_slice is not None:
         raise SystemExit("baseline actor unexpectedly contains height_scan")
-    if args.ablation == "masked" and height_slice is None:
-        raise SystemExit("masked ablation requires a height_scan actor")
+    if args.ablation != "normal" and height_slice is None:
+        raise SystemExit(f"{args.ablation} ablation requires a height_scan actor")
 
     runner = OnPolicyRunner(vec_env, agent_cfg.to_dict(), log_dir=None, device=device)
     runner.load(str(args.checkpoint.expanduser().resolve()))
@@ -125,12 +142,21 @@ def main() -> None:
     valid_ratio_count = 0
     infer_seconds = []
 
+    history: list[torch.Tensor] = []
+
     for _ in range(args.max_steps):
         if not bool(alive.any()):
             break
         _lock_command(env, args.vx, args.vy, args.wz)
         obs, _ = vec_env.get_observations()
-        model_obs = _apply_ablation(obs, height_slice, args.ablation)
+        model_obs = _apply_ablation(
+            obs,
+            height_slice,
+            args.ablation,
+            noise_std=args.noise_std,
+            delay_steps=args.delay_steps,
+            history=history,
+        )
         started = time.perf_counter()
         with torch.no_grad():
             action = policy(model_obs)
@@ -160,6 +186,11 @@ def main() -> None:
         "seed": args.seed,
         "command": [args.vx, args.vy, args.wz],
         "ablation": args.ablation,
+        "noise_std": args.noise_std if args.ablation == "noisy" else None,
+        "delay_steps": args.delay_steps if args.ablation == "delayed" else None,
+        "success_definition": (
+            "episode reaches max_steps without a non-timeout termination (base contact)"
+        ),
         "episodes": args.episodes,
         "success_rate": float(survived.float().mean()),
         "fall_rate": float(fell.float().mean()),

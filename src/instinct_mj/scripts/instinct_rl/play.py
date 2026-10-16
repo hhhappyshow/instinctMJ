@@ -396,8 +396,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
     device = _resolve_device(cfg.device)
     checkpoint: Path | None = None
 
-    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-    if viewer_backend != "native" or not has_display:
+    if viewer_backend == "none":
         _disable_headless_debug_visualization(env_cfg)
 
     if cfg.num_envs is not None:

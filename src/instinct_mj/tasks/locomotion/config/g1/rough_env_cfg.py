@@ -10,6 +10,7 @@ import copy
 from dataclasses import dataclass, field
 
 import mjlab.envs.mdp as mdp
+from mjlab.managers import CurriculumTermCfg as CurrTerm
 from mjlab.managers import ObservationGroupCfg as ObsGroup
 from mjlab.managers import ObservationTermCfg as ObsTerm
 from mjlab.scene import SceneCfg
@@ -41,44 +42,52 @@ from .flat_env_cfg import _actions_cfg, _commands_cfg, _events_cfg, _rewards_cfg
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
 TERRAIN_COLUMN_NAMES = ("flat", "slope", "stairs", "rough")
+TERRAIN_STAGE_NAMES = ("stage1_flat", "stage2_easy", "stage3_rough")
+TERRAIN_SEED = 0
+# Row t in [0, 1] maps to difficulty 0.05 + 0.95*t.
+# Stage 1 is nearly flat. Stage 2 stairs are about 8 cm. Stage 3 reaches 15 cm.
+_PATCH_SIZE = (8.0, 8.0)
 
-EASY_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
-    seed=0,
-    curriculum=True,
-    size=(6.0, 6.0),
-    border_width=1.0,
-    border_height=0.5,
-    num_rows=2,
-    num_cols=len(TERRAIN_COLUMN_NAMES),
-    difficulty_range=(0.4, 1.0),
-    sub_terrains={
-        "flat": flat(proportion=0.25, size=(6.0, 6.0)),
-        "slope": hf_pyramid_slope(
-            proportion=0.25,
-            size=(6.0, 6.0),
-            slope_range=(0.05, 0.15),
-            platform_width=1.0,
-            border_width=0.25,
-        ),
-        "stairs": pyramid_stairs(
-            proportion=0.25,
-            size=(6.0, 6.0),
-            step_height_range=(0.02, 0.06),
-            step_width=0.35,
-            platform_width=1.0,
-            border_width=0.5,
-        ),
-        "rough": random_rough(
-            proportion=0.25,
-            size=(6.0, 6.0),
-            noise_range=(0.02, 0.04),
-            noise_step=0.01,
-            border_width=0.25,
-            scale_with_difficulty=True,
-        ),
-    },
-    add_lights=False,
-)
+
+def make_rough_terrain_cfg() -> TerrainGeneratorCfg:
+    """Three-row curriculum shared by the baseline and RayCaster tasks."""
+    return TerrainGeneratorCfg(
+        seed=TERRAIN_SEED,
+        curriculum=True,
+        size=_PATCH_SIZE,
+        border_width=1.0,
+        border_height=0.5,
+        num_rows=len(TERRAIN_STAGE_NAMES),
+        num_cols=len(TERRAIN_COLUMN_NAMES),
+        difficulty_range=(0.05, 1.0),
+        sub_terrains={
+            "flat": flat(proportion=0.25, size=_PATCH_SIZE),
+            "slope": hf_pyramid_slope(
+                proportion=0.25,
+                size=_PATCH_SIZE,
+                slope_range=(0.0, 0.12),
+                platform_width=1.0,
+                border_width=0.25,
+            ),
+            "stairs": pyramid_stairs(
+                proportion=0.25,
+                size=_PATCH_SIZE,
+                step_height_range=(0.0, 0.15),
+                step_width=0.35,
+                platform_width=1.0,
+                border_width=0.5,
+            ),
+            "rough": random_rough(
+                proportion=0.25,
+                size=_PATCH_SIZE,
+                noise_range=(0.01, 0.04),
+                noise_step=0.005,
+                border_width=0.25,
+                scale_with_difficulty=True,
+            ),
+        },
+        add_lights=False,
+    )
 
 
 def _robot_cfg():
@@ -136,7 +145,7 @@ class G1RoughSceneCfg(SceneCfg):
             sensors.append(make_height_scanner_cfg(debug_vis=self.show_height_rays, show_rays=self.show_height_rays))
         self.terrain = TerrainEntityCfg(
             terrain_type="generator",
-            terrain_generator=EASY_ROUGH_TERRAINS_CFG,
+            terrain_generator=make_rough_terrain_cfg(),
             max_init_terrain_level=0,
         )
         self.entities = {"robot": _robot_cfg()}
@@ -192,7 +201,9 @@ class G1LocomotionRoughEnvCfg(InstinctRlEnvCfg):
     rewards: dict = field(default_factory=_rewards_cfg)
     terminations: dict = field(default_factory=_terminations_cfg)
     events: dict = field(default_factory=_events_cfg)
-    curriculum: dict = field(default_factory=dict)
+    curriculum: dict = field(
+        default_factory=lambda: {"terrain_levels": CurrTerm(func=locomotion_mdp.terrain_levels_vel)}
+    )
     monitors: dict = field(default_factory=dict)
     viewer: ViewerConfig = field(
         default_factory=lambda: ViewerConfig(
@@ -243,5 +254,7 @@ def instinct_g1_locomotion_rough_env_cfg(*, play: bool = False, include_height_s
         base_velocity_cmd.resampling_time_range = (2.0, 2.0)
         cfg.events["base_external_force_torque"] = None
         cfg.events["push_robot"] = None
+        cfg.terminations["time_out"] = None
+        cfg.curriculum = {}
         cfg.observations["policy"].enable_corruption = False
     return cfg

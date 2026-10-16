@@ -44,6 +44,36 @@ def make_height_scanner_cfg(*, debug_vis: bool = False, show_rays: bool = False)
     )
 
 
+def relative_heights(
+    frame_z: torch.Tensor,
+    hit_z: torch.Tensor,
+    distances: torch.Tensor,
+    *,
+    max_distance: float = HEIGHT_SCAN_MAX_DISTANCE,
+) -> torch.Tensor:
+    """Match ``mjlab`` height_scan: miss when distance < 0, else frame_z - hit_z."""
+    heights = frame_z - hit_z
+    return torch.where(distances < 0, torch.full_like(heights, max_distance), heights).clamp(
+        HEIGHT_SCAN_CLIP[0], HEIGHT_SCAN_CLIP[1]
+    )
+
+
+def apply_scan_ablation(
+    scan: torch.Tensor,
+    mode: str,
+    *,
+    noise_std: float = 0.05,
+) -> torch.Tensor:
+    """Perturb a height scan without touching the rest of the observation."""
+    if mode == "normal":
+        return scan
+    if mode == "masked":
+        return torch.full_like(scan, HEIGHT_SCAN_MASK_VALUE)
+    if mode == "noisy":
+        return (scan + torch.randn_like(scan) * noise_std).clamp(HEIGHT_SCAN_CLIP[0], HEIGHT_SCAN_CLIP[1])
+    raise ValueError(f"unsupported scan ablation: {mode}")
+
+
 def height_scan_observation(env, sensor_name: str = "height_scanner", offset: float = 0.0) -> torch.Tensor:
     """Return the clipped height scan that enters the observation manager.
 
