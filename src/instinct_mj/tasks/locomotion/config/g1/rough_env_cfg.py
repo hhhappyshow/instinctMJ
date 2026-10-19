@@ -7,10 +7,13 @@ events. The RayCaster actor appends the height scan. The baseline actor does not
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass, field
 
 import mjlab.envs.mdp as mdp
+import torch
 from mjlab.managers import CurriculumTermCfg as CurrTerm
+from mjlab.managers import EventTermCfg as Event
 from mjlab.managers import ObservationGroupCfg as ObsGroup
 from mjlab.managers import ObservationTermCfg as ObsTerm
 from mjlab.scene import SceneCfg
@@ -42,11 +45,22 @@ from .flat_env_cfg import _actions_cfg, _commands_cfg, _events_cfg, _rewards_cfg
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
 TERRAIN_COLUMN_NAMES = ("flat", "slope", "stairs", "rough")
-TERRAIN_STAGE_NAMES = ("stage1_flat", "stage2_easy", "stage3_rough")
+TERRAIN_STAGE_NAMES = (
+    "stage1_0cm",
+    "stage2_2cm",
+    "stage3_4cm",
+    "stage4_6cm",
+    "stage5_8cm",
+    "stage6_10cm",
+)
 TERRAIN_SEED = 0
 # Row t in [0, 1] maps to difficulty 0.05 + 0.95*t.
-# Stage 1 is nearly flat. Stage 2 stairs are about 8 cm. Stage 3 reaches 15 cm.
+# Six rows keep each stair step near 2 cm. The last row is 10 cm.
 _PATCH_SIZE = (8.0, 8.0)
+_STAIRS_BORDER_WIDTH = 0.5
+# Third-highest row. Rows increase with step height, so this is stage 4 of 6.
+_PLAY_STAIRS_ROW = len(TERRAIN_STAGE_NAMES) - 3
+_PLAY_STAIRS_FRONT_CLEARANCE = 0.4
 
 
 def make_rough_terrain_cfg() -> TerrainGeneratorCfg:
@@ -72,10 +86,10 @@ def make_rough_terrain_cfg() -> TerrainGeneratorCfg:
             "stairs": pyramid_stairs(
                 proportion=0.25,
                 size=_PATCH_SIZE,
-                step_height_range=(0.0, 0.15),
+                step_height_range=(0.0, 0.10),
                 step_width=0.35,
                 platform_width=1.0,
-                border_width=0.5,
+                border_width=_STAIRS_BORDER_WIDTH,
             ),
             "rough": random_rough(
                 proportion=0.25,
@@ -240,6 +254,23 @@ class G1LocomotionRoughEnvCfg(InstinctRlEnvCfg):
         self.run_name = "G1RoughRayCaster" if self.include_height_scan else "G1RoughBaseline"
 
 
+def _play_spawn_in_front_of_stairs(env, env_ids) -> None:
+    """Stand on the flat border in front of the third-highest stair pyramid."""
+    del env_ids
+    terrain = env.scene.terrain
+    column = TERRAIN_COLUMN_NAMES.index("stairs")
+    origin = terrain.terrain_origins[_PLAY_STAIRS_ROW, column]
+    face_distance = _PATCH_SIZE[1] / 2.0 - _STAIRS_BORDER_WIDTH
+    count = terrain.env_origins.shape[0]
+    spacing = 1.0
+    x_offsets = (torch.arange(count, device=origin.device, dtype=origin.dtype) - (count - 1) / 2.0) * spacing
+    terrain.terrain_levels[:] = _PLAY_STAIRS_ROW
+    terrain.terrain_types[:] = column
+    terrain.env_origins[:, 0] = origin[0] + x_offsets
+    terrain.env_origins[:, 1] = origin[1] - face_distance - _PLAY_STAIRS_FRONT_CLEARANCE
+    terrain.env_origins[:, 2] = 0.0
+
+
 def instinct_g1_locomotion_rough_env_cfg(*, play: bool = False, include_height_scan: bool = False):
     cfg = G1LocomotionRoughEnvCfg(include_height_scan=include_height_scan)
     if play:
@@ -254,6 +285,21 @@ def instinct_g1_locomotion_rough_env_cfg(*, play: bool = False, include_height_s
         base_velocity_cmd.resampling_time_range = (2.0, 2.0)
         cfg.events["base_external_force_torque"] = None
         cfg.events["push_robot"] = None
+        cfg.events = {
+            "place_in_front_of_stairs": Event(
+                func=_play_spawn_in_front_of_stairs,
+                mode="startup",
+            ),
+            **cfg.events,
+        }
+        cfg.events["reset_base"].params["pose_range"] = {
+            "x": (0.0, 0.0),
+            "y": (0.0, 0.0),
+            "yaw": (math.pi / 2, math.pi / 2),
+        }
+        cfg.events["reset_base"].params["velocity_range"] = {
+            axis: (0.0, 0.0) for axis in ("x", "y", "z", "roll", "pitch", "yaw")
+        }
         cfg.terminations["time_out"] = None
         cfg.curriculum = {}
         cfg.observations["policy"].enable_corruption = False

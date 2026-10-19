@@ -106,6 +106,21 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     task_id = TASKS[args.variant]
     env_cfg = load_env_cfg(task_id, play=True)
+    # Play stands in front of one stair row. Evaluation places the requested tile itself.
+    env_cfg.events.pop("place_in_front_of_stairs", None)
+    env_cfg.events["reset_base"].params["pose_range"] = {
+        "x": (-0.5, 0.5),
+        "y": (-0.5, 0.5),
+        "yaw": (-3.14, 3.14),
+    }
+    env_cfg.events["reset_base"].params["velocity_range"] = {
+        "x": (-0.5, 0.5),
+        "y": (-0.5, 0.5),
+        "z": (-0.1, 0.1),
+        "roll": (-0.5, 0.5),
+        "pitch": (-0.5, 0.5),
+        "yaw": (-0.5, 0.5),
+    }
     env_cfg.scene.num_envs = args.episodes
     env_cfg.commands["base_velocity"].resampling_time_range = (1.0e6, 1.0e6)
     env_cfg.seed = args.seed
