@@ -57,7 +57,7 @@ class G1FlatPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     log_interval: int = 10
     experiment_name: str = "g1_locomotion_flat"
 
-    load_run: object | None = None
+    load_run: str | None = None
 
     def __post_init__(self):
         self.resume = self.load_run is not None
