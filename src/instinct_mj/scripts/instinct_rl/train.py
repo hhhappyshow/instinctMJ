@@ -50,6 +50,8 @@ class TrainConfig:
     video_interval: int = 2_000
     viewer: Literal["none", "native"] = "none"
     viewer_fps: float = 60.0
+    logger: Literal["tensorboard", "wandb"] = "tensorboard"
+    wandb_project: str = "instinct-mj"
     gpu_ids: list[int] | Literal["all"] | None = None
     torchrunx_log_dir: str | None = None
 
@@ -284,6 +286,23 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         signal_handlers_to_restore[signum] = signal.getsignal(signum)
         signal.signal(signum, _interrupt_handler)
 
+    wandb_run = None
+    if cfg.logger == "wandb" and rank == 0:
+        import wandb
+
+        wandb_run = wandb.init(
+            project=cfg.wandb_project,
+            name=log_dir.name,
+            dir=str(log_dir),
+            sync_tensorboard=True,
+            config={
+                "task": task_id,
+                "num_envs": cfg.env.scene.num_envs,
+                "seed": cfg.agent.seed,
+            },
+        )
+        print(f"[INFO] Syncing TensorBoard metrics to wandb project {cfg.wandb_project}.")
+
     try:
         runner.learn(
             num_learning_iterations=cfg.agent.max_iterations,
@@ -297,6 +316,8 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
             signal.signal(signum, previous_handler)
         if train_viewer is not None:
             train_viewer.close()
+        if wandb_run is not None:
+            wandb_run.finish()
         vec_env.close()
         if dist.is_initialized():
             dist.destroy_process_group()

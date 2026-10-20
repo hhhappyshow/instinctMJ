@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import mjlab.envs.mdp as mdp
 import torch
 from mjlab.managers import CurriculumTermCfg as CurrTerm
+from mjlab.managers import RewardTermCfg as RewTerm
 from mjlab.managers import EventTermCfg as Event
 from mjlab.managers import ObservationGroupCfg as ObsGroup
 from mjlab.managers import ObservationTermCfg as ObsTerm
@@ -41,6 +42,17 @@ from instinct_mj.perception.height_scan import (
 from instinct_mj.terrains import TerrainEntityCfg
 
 from .flat_env_cfg import _actions_cfg, _commands_cfg, _events_cfg, _rewards_cfg, _terminations_cfg
+
+
+def _rough_rewards_cfg() -> dict:
+    """Flat rewards plus one penalty for a one-sided walking stride."""
+    rewards = _rewards_cfg()
+    rewards["leg_gait_symmetry"] = RewTerm(
+        func=locomotion_mdp.LegGaitSymmetry,
+        weight=-0.5,
+        params={"ema_decay": 0.99},
+    )
+    return rewards
 
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
@@ -212,7 +224,7 @@ class G1LocomotionRoughEnvCfg(InstinctRlEnvCfg):
     actions: dict = field(default_factory=_actions_cfg)
     commands: dict = field(default_factory=_commands_cfg)
     observations: dict = field(default_factory=lambda: _observations_cfg(include_height_scan=False))
-    rewards: dict = field(default_factory=_rewards_cfg)
+    rewards: dict = field(default_factory=_rough_rewards_cfg)
     terminations: dict = field(default_factory=_terminations_cfg)
     events: dict = field(default_factory=_events_cfg)
     curriculum: dict = field(
