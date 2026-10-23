@@ -45,45 +45,51 @@ class G1LocomotionSceneCfg(SceneCfg):
     """G1 locomotion scene in mjlab-native dataclass form."""
 
     def __post_init__(self) -> None:
-        robot_cfg = copy.deepcopy(G1_CFG)
-        robot_cfg.articulation.actuators = copy.deepcopy(beyondmimic_g1_29dof_actuator_cfgs)
-        feet_contact_forces = ContactSensorCfg(
-            name="feet_contact_forces",
-            primary=ContactMatch(
-                mode="body",
-                pattern=("left_ankle_roll_link", "right_ankle_roll_link"),
-                entity="robot",
-            ),
-            secondary=None,
-            fields=("found", "force"),
-            reduce="netforce",
-            track_air_time=True,
-            history_length=3,
-        )
-        base_contact_forces = ContactSensorCfg(
-            name="base_contact_forces",
-            primary=ContactMatch(
-                mode="body",
-                pattern=(
-                    "torso_link",
-                    ".*_shoulder_.*",
-                    ".*_elbow_.*",
-                    ".*_wrist_.*",
-                    ".*_hip_.*",
-                    ".*_knee_.*",
+        # Tyro rebuilds this dataclass from fields that navigation may already
+        # have replaced. Only fill the flat defaults when those fields are empty.
+        if self.terrain is None:
+            self.terrain = TerrainEntityCfg(terrain_type="plane")
+        if not self.entities:
+            robot_cfg = copy.deepcopy(G1_CFG)
+            robot_cfg.articulation.actuators = copy.deepcopy(beyondmimic_g1_29dof_actuator_cfgs)
+            self.entities = {"robot": robot_cfg}
+        if not self.sensors:
+            feet_contact_forces = ContactSensorCfg(
+                name="feet_contact_forces",
+                primary=ContactMatch(
+                    mode="body",
+                    pattern=("left_ankle_roll_link", "right_ankle_roll_link"),
+                    entity="robot",
                 ),
-                entity="robot",
-            ),
-            secondary=None,
-            fields=("force",),
-            reduce="netforce",
-            track_air_time=False,
-            history_length=3,
-        )
-        self.terrain = TerrainEntityCfg(terrain_type="plane")
-        self.entities = {"robot": robot_cfg}
-        self.sensors = (feet_contact_forces, base_contact_forces)
-        self.extent = 2.0
+                secondary=None,
+                fields=("found", "force"),
+                reduce="netforce",
+                track_air_time=True,
+                history_length=3,
+            )
+            base_contact_forces = ContactSensorCfg(
+                name="base_contact_forces",
+                primary=ContactMatch(
+                    mode="body",
+                    pattern=(
+                        "torso_link",
+                        ".*_shoulder_.*",
+                        ".*_elbow_.*",
+                        ".*_wrist_.*",
+                        ".*_hip_.*",
+                        ".*_knee_.*",
+                    ),
+                    entity="robot",
+                ),
+                secondary=None,
+                fields=("force",),
+                reduce="netforce",
+                track_air_time=False,
+                history_length=3,
+            )
+            self.sensors = (feet_contact_forces, base_contact_forces)
+        if self.extent is None:
+            self.extent = 2.0
 
 
 def _scene_cfg(play: bool) -> G1LocomotionSceneCfg:
@@ -402,8 +408,12 @@ class G1LocomotionFlatEnvCfg(InstinctRlEnvCfg):
 
     def __post_init__(self) -> None:
         # All managers are already dicts, no conversion needed!
+        # Navigation replaces this action after construction. Tyro rebuilds the
+        # dataclass from those fields, so the flat-only setup must not run then.
+        joint_pos_action = self.actions.get("joint_pos")
+        if joint_pos_action is None:
+            return
         self.sim.njmax = 300
-        joint_pos_action: JointPositionActionCfg = self.actions["joint_pos"]
         joint_pos_action.scale = copy.deepcopy(beyondmimic_action_scale)
         reward_terms = self.rewards
         feet_air_time = reward_terms.get("feet_air_time")
