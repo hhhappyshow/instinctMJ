@@ -127,6 +127,10 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         debug_vis = getattr(terrain, "debug_vis", None)
         if callable(debug_vis):
             debug_vis(visualizer)
+        for term in getattr(self.action_manager, "_terms", {}).values():
+            term_debug_vis = getattr(term, "debug_vis", None)
+            if callable(term_debug_vis):
+                term_debug_vis(visualizer)
 
     def _reset_idx(self, env_ids: Sequence[int] | torch.Tensor) -> None:
         if isinstance(env_ids, Sequence):

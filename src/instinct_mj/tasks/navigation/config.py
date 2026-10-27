@@ -33,7 +33,7 @@ def box_spec(index):
     return spec
 
 
-def env_config(play=False, rays=True, official=False):
+def env_config(play=False, rays=True, official=False, velocity_tracking=False):
     cfg = instinct_g1_locomotion_flat_env_cfg(play=play)
     cfg.scene.num_envs = 1 if play else 64
     cfg.scene.env_spacing = 12.
@@ -41,7 +41,7 @@ def env_config(play=False, rays=True, official=False):
     cfg.sim.nconmax = 100
     cfg.decimation = 20  # 10 Hz residual, five 50 Hz locomotion updates.
     cfg.episode_length_s = 20.
-    stage = int(os.environ.get('INSTINCT_NAVIGATION_STAGE', '0'))
+    stage = int(os.environ.get('INSTINCT_NAVIGATION_STAGE', '1' if velocity_tracking else '0'))
     if stage not in range(4):
         raise ValueError('Navigation stage must be 0, 1, 2 or 3')
     if official:
@@ -59,10 +59,13 @@ def env_config(play=False, rays=True, official=False):
         feet = (ContactSensorCfg(name='feet_contact_forces',
             primary=ContactMatch(mode='body', pattern=('left_ankle_roll_link', 'right_ankle_roll_link'), entity='robot'),
             secondary=None, fields=('found', 'force'), reduce='netforce', track_air_time=True, history_length=3),)
-    cfg.scene.sensors = (*contacts, *feet, make_forward_scanner_cfg())
+    scanner = make_forward_scanner_cfg(debug_vis=play and rays)
+    scanner.viz.show_rays = play and rays
+    cfg.scene.sensors = (*contacts, *feet, scanner)
     cfg.actions = {'navigation': NavigationActionCfg(
-        entity_name='robot', stage=stage,
+        entity_name='robot', stage=stage, log_goal=play,
         backend='unitree_onnx' if official else 'frozen',
+        velocity_tracking=velocity_tracking,
         checkpoint=str(DEFAULT_ONNX) if official else os.environ.get('INSTINCT_LOCOMOTION_CHECKPOINT', ''))}
     cfg.commands = {}
     cfg.curriculum = {}
@@ -70,24 +73,38 @@ def env_config(play=False, rays=True, official=False):
     cfg.events['reset_base'].params['pose_range'] = {k: (0., 0.) for k in ('x','y','yaw')}
     cfg.events['reset_base'].params['velocity_range'] = {k: (0., 0.) for k in ('x','y','z','roll','pitch','yaw')}
     cfg.events['reset_robot_joints'].params.update(position_range=(1., 1.), velocity_range=(0., 0.))
-    terms = dict(goal=ObservationTermCfg(func=mdp.goal), base_ang_vel=ObservationTermCfg(func=base_mdp.base_ang_vel),
-                 projected_gravity=ObservationTermCfg(func=base_mdp.projected_gravity),
-                 previous_action=ObservationTermCfg(func=base_mdp.last_action))
-    if rays:
-        terms['forward_scan'] = ObservationTermCfg(func=ray_observation)
+    if velocity_tracking:
+        terms = dict(velocity_command=ObservationTermCfg(func=mdp.velocity_command),
+                     base_ang_vel=ObservationTermCfg(func=base_mdp.base_ang_vel),
+                     projected_gravity=ObservationTermCfg(func=base_mdp.projected_gravity),
+                     previous_action=ObservationTermCfg(func=base_mdp.last_action),
+                     forward_scan=ObservationTermCfg(func=ray_observation))
+        reward_weights = dict(track=2., approach=-2., collision=-10., fall=-10., time=-.1, smoothness=-.05)
+        terminal = ('collision', 'fall', 'timeout')
+    else:
+        terms = dict(goal=ObservationTermCfg(func=mdp.goal), base_ang_vel=ObservationTermCfg(func=base_mdp.base_ang_vel),
+                     projected_gravity=ObservationTermCfg(func=base_mdp.projected_gravity),
+                     previous_action=ObservationTermCfg(func=base_mdp.last_action))
+        if rays:
+            terms['forward_scan'] = ObservationTermCfg(func=ray_observation)
+        reward_weights = dict(progress=2., success=10., collision=-10., fall=-10., time=-.1, smoothness=-.05)
+        terminal = ('success', 'collision', 'fall', 'timeout')
     cfg.observations = {name: ObservationGroupCfg(terms=copy.deepcopy(terms), concatenate_terms=False, enable_corruption=False)
                         for name in ('policy', 'critic')}
     cfg.rewards = {kind: RewardTermCfg(func=mdp.reward, weight=weight, params={'kind': kind})
-                   for kind, weight in dict(progress=2., success=10., collision=-10., fall=-10., time=-.1, smoothness=-.05).items()}
+                   for kind, weight in reward_weights.items()}
     cfg.terminations = {kind: TerminationTermCfg(func=mdp.outcome, params={'kind': kind}, time_out=kind=='timeout')
-                        for kind in ('success','collision','fall','timeout')}
-    cfg.run_name = f'{"Unitree" if official else ""}NavigationStage{stage}'
+                        for kind in terminal}
+    cfg.run_name = f'{"Unitree" if official else ""}{"VelocityAvoidance" if velocity_tracking else "Navigation"}Stage{stage}'
     return cfg
 
 
-def runner_config(rays=True, official=False):
+def runner_config(rays=True, official=False, velocity_tracking=False):
     cfg = G1FlatPPORunnerCfg()
-    name = 'g1_navigation_raycast' if rays else 'g1_navigation_baseline'
-    cfg.experiment_name = f'{name}_unitree' if official else name
+    if velocity_tracking:
+        cfg.experiment_name = 'g1_velocity_avoidance_unitree'
+    else:
+        name = 'g1_navigation_raycast' if rays else 'g1_navigation_baseline'
+        cfg.experiment_name = f'{name}_unitree' if official else name
     cfg.seed = 42
     return cfg

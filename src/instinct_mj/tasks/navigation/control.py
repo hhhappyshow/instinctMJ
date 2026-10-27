@@ -1,5 +1,7 @@
 """Two-rate residual navigation action. The low-level controller runs at 50 Hz."""
 from dataclasses import dataclass
+import math
+import threading
 import torch
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 from mjlab.utils.lab_api.math import quat_apply_inverse
@@ -7,12 +9,16 @@ from instinct_mj.control.frozen_locomotion import FrozenLocomotion
 from instinct_mj.control.unitree_onnx_locomotion import OFFICIAL_JOINT_ORDER, UnitreeOnnxLocomotion
 from instinct_mj.tasks.locomotion.config.g1.flat_env_cfg import instinct_g1_locomotion_flat_env_cfg
 
+_COMMAND_HOLD_STEPS = 50
+
 
 @dataclass(kw_only=True)
 class NavigationActionCfg(ActionTermCfg):
     checkpoint: str = ''
     stage: int = 0
     backend: str = 'frozen'
+    log_goal: bool = False
+    velocity_tracking: bool = False
 
     def build(self, env):
         return NavigationAction(self, env)
@@ -62,6 +68,9 @@ class NavigationAction(ActionTerm):
         self.best_distance = torch.zeros(env.num_envs, device=env.device)
         self.progress = torch.zeros_like(self.best_distance)
         self.reward_step = -1
+        self._teleop_lock = threading.Lock()
+        self._teleop = None
+        self._sampled_command = torch.zeros(env.num_envs, 3, device=env.device)
 
     @property
     def raw_action(self):
@@ -71,7 +80,73 @@ class NavigationAction(ActionTerm):
     def action_dim(self):
         return 3
 
+    def enable_teleop(self):
+        """Arrow keys supply the velocity command. A velocity-tracking policy may add a residual."""
+        with self._teleop_lock:
+            self._teleop = [0.0, 0.0]
+
+    def clear_teleop(self):
+        with self._teleop_lock:
+            self._teleop = [0.0, 0.0]
+        print('teleop speed=+0.0 m/s  bearing=+0.0 rad')
+
+    def nudge_teleop(self, speed=0.0, bearing=0.0):
+        with self._teleop_lock:
+            if self._teleop is None:
+                self._teleop = [0.0, 0.0]
+            updated = [
+                min(max(self._teleop[0] + speed, -0.5), 1.0),
+                min(max(self._teleop[1] + bearing, -1.0), 1.0),
+            ]
+            self._teleop = updated
+        print(f'teleop speed={updated[0]:+.1f} m/s  bearing={updated[1]:+.1f} rad')
+
+    def _teleop_state(self):
+        with self._teleop_lock:
+            if self._teleop is None:
+                return None
+            return tuple(self._teleop)
+
+    def velocity_command(self):
+        command = self._teleop_state()
+        if command is not None:
+            speed, bearing = command
+            return torch.tensor(
+                [[speed * math.cos(bearing), speed * math.sin(bearing), bearing]],
+                device=self.device,
+            ).expand(self.num_envs, 3)
+        return self._sampled_command
+
+    def _sample_commands(self, ids):
+        count = self.num_envs if isinstance(ids, slice) else len(ids)
+        limits = self.policy.limits
+        cmd = limits[:, 0] + torch.rand(count, 3, device=self.device) * (limits[:, 1] - limits[:, 0])
+        forward = torch.rand(count, device=self.device) < 0.7
+        if bool(forward.any()):
+            cmd[forward, 0] = 0.3 + 0.7 * torch.rand(int(forward.sum()), device=self.device)
+            cmd[forward, 1] = 0.6 * torch.rand(int(forward.sum()), device=self.device) - 0.3
+            cmd[forward, 2] = 0.8 * torch.rand(int(forward.sum()), device=self.device) - 0.4
+        self._sampled_command[ids] = cmd.clamp(limits[:, 0], limits[:, 1])
+
+    def _maybe_resample(self):
+        if not self.cfg.velocity_tracking or self._teleop_state() is not None:
+            return
+        step = self._env.episode_length_buf
+        due = (step > 0) & (step % _COMMAND_HOLD_STEPS == 0)
+        if bool(due.any()):
+            self._sample_commands(due.nonzero(as_tuple=False).flatten())
+
     def relative_goal(self):
+        command = self._teleop_state()
+        if command is not None:
+            speed, bearing = command
+            if abs(speed) < 0.05 and abs(bearing) < 0.05:
+                return torch.zeros(self.num_envs, 3, device=self.device)
+            # Four meters matches the goal distance the residual policy was trained on.
+            return torch.tensor(
+                [[4.0 * math.cos(bearing), 4.0 * math.sin(bearing), bearing]],
+                device=self.device,
+            ).expand(self.num_envs, 3)
         robot = self._entity.data
         delta = self.goal - robot.root_link_pos_w
         delta[:, 2] = 0
@@ -81,14 +156,37 @@ class NavigationAction(ActionTerm):
     def distance(self):
         return (self.goal[:, :2] - self._entity.data.root_link_pos_w[:, :2]).norm(dim=-1)
 
+    def debug_vis(self, visualizer) -> None:
+        if not self.cfg.log_goal:
+            return
+        goals = self.goal.detach().cpu()
+        for index in visualizer.get_env_indices(self.num_envs):
+            center = goals[index].numpy().copy()
+            center[2] = 0.25
+            visualizer.add_sphere(center, 0.08, (1.0, 0.15, 0.1, 0.9), label=f"navigation_goal_{index}")
+
     def process_actions(self, actions):
         self._raw.copy_(actions)
-        goal = self.relative_goal()
-        nominal = torch.stack((.5*goal[:, 0], .5*goal[:, 1], goal[:, 2]), -1)
+        command = self._teleop_state()
+        if command is None:
+            goal = self.relative_goal()
+            nominal = torch.stack((.5*goal[:, 0], .5*goal[:, 1], goal[:, 2]), -1)
+        else:
+            speed, bearing = command
+            nominal = torch.tensor(
+                [[speed * math.cos(bearing), speed * math.sin(bearing), bearing]],
+                device=self.device,
+            ).expand(self.num_envs, 3)
+        if self.cfg.velocity_tracking:
+            self._maybe_resample()
+            nominal = self.velocity_command()
         nominal = self.policy.command(nominal, torch.zeros_like(nominal))
-        # Symmetric residual capacity is derived from the saved command intervals.
-        scale = (self.policy.limits[:, 1] - self.policy.limits[:, 0]) / 2
-        self.velocity.copy_(self.policy.command(nominal, actions.clamp(-1, 1)*scale))
+        if command is not None and not self.cfg.velocity_tracking:
+            self.velocity.copy_(nominal)
+        else:
+            # Symmetric residual capacity is derived from the saved command intervals.
+            scale = (self.policy.limits[:, 1] - self.policy.limits[:, 0]) / 2
+            self.velocity.copy_(self.policy.command(nominal, actions.clamp(-1, 1)*scale))
         self.phase = 0
 
     def apply_actions(self):
@@ -118,6 +216,8 @@ class NavigationAction(ActionTerm):
         self._swing_run[ids] = 0
         self._foot_contact[ids] = False
         self.low.reset(ids)
+        if self.cfg.velocity_tracking:
+            self._sample_commands(ids)
         count = self._raw[ids].shape[0]
         origin = self._env.scene.env_origins[ids]
         angle = torch.rand(count, device=self.device)*1.2-.6
@@ -128,6 +228,14 @@ class NavigationAction(ActionTerm):
         self.goal[ids, 2] = 0
         self.best_distance[ids] = distance
         self.progress[ids] = 0
+        if self.cfg.log_goal:
+            goals = self.goal[ids].detach().cpu()
+            distances = self.best_distance[ids].detach().cpu()
+            for goal, goal_distance in zip(goals, distances, strict=True):
+                print(
+                    f"goal: x={float(goal[0]):+.3f} y={float(goal[1]):+.3f} "
+                    f"z={float(goal[2]):+.3f} distance={float(goal_distance):.3f}"
+                )
         choice = torch.randint(0, 3, (count,), device=self.device) if self.cfg.stage >= 2 else torch.ones(count, device=self.device, dtype=torch.long)
         heights = (.3, .45, .6)
         for index in range(3):
