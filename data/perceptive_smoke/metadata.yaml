@@ -1,0 +1,7 @@
+terrains:
+- terrain_id: 0
+  terrain_file: terrain.stl
+motion_files:
+- terrain_id: 0
+  motion_file: stand.retargeted.npz
+  weight: 1.0

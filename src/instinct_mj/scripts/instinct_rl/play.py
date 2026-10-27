@@ -52,6 +52,7 @@ class PlayConfig:
     onnx_model_dir: str | None = None
     no_resume: bool = False
     no_terminations: bool = False
+    teleop: bool = False
 
 
 class _ViewerEnvAdapter:
@@ -137,6 +138,19 @@ def _resolve_rollout_steps(cfg: PlayConfig) -> int | None:
     if cfg.viewer == "none":
         return cfg.video_length if cfg.video else 300
     return None
+
+
+class _TeleopViewer(NativeMujocoViewer):
+    """Enter clears the stick command instead of resetting the scene."""
+
+    def _safe_key_callback(self, key: int) -> None:
+        from mjlab.viewer.native.keys import KEY_ENTER
+
+        if key == KEY_ENTER:
+            if self.user_key_callback is not None:
+                self.user_key_callback(key)
+            return
+        super()._safe_key_callback(key)
 
 
 def _force_viewer_realtime_1x(viewer) -> None:
@@ -396,8 +410,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
     device = _resolve_device(cfg.device)
     checkpoint: Path | None = None
 
-    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-    if viewer_backend != "native" or not has_display:
+    if viewer_backend == "none":
         _disable_headless_debug_visualization(env_cfg)
 
     if cfg.num_envs is not None:
@@ -406,7 +419,15 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
         env_cfg.viewer.height = cfg.video_height
     if cfg.video_width is not None:
         env_cfg.viewer.width = cfg.video_width
-    if cfg.no_terminations:
+    if cfg.teleop:
+        if "navigation" not in env_cfg.actions or "RayCaster" not in task_id:
+            raise ValueError("`--teleop` requires a RayCaster navigation task")
+        env_cfg.terminations = {}
+        env_cfg.actions["navigation"].stage = max(int(env_cfg.actions["navigation"].stage), 1)
+        if cfg.num_envs is None:
+            env_cfg.scene.num_envs = 1
+        print("[INFO] Teleop: arrow keys are the velocity command sent to the policy.")
+    elif cfg.no_terminations:
         env_cfg.terminations = {}
         print("[INFO] All terminations are disabled for play.")
 
@@ -514,9 +535,32 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
             policy = runner.get_inference_policy(device=device)
 
     rollout_steps = _resolve_rollout_steps(cfg)
+    key_callback = None
+    if cfg.teleop:
+        control = env.unwrapped.action_manager.get_term("navigation")
+        control.enable_teleop()
+        print("[INFO] The robot stands until you press an arrow. Up/Down sets forward speed, Left/Right sets bearing.")
+        print("[INFO] Enter zeros the commanded velocity. Space still pauses. Avoidance comes only from the trained residual.")
+        if viewer_backend != "native":
+            print("[INFO] Teleop keys require --viewer native.")
+
+        def key_callback(key: int) -> None:
+            from mjlab.viewer.native import keys as K
+
+            if key == K.KEY_UP:
+                control.nudge_teleop(speed=0.1)
+            elif key == K.KEY_DOWN:
+                control.nudge_teleop(speed=-0.1)
+            elif key == K.KEY_LEFT:
+                control.nudge_teleop(bearing=0.1)
+            elif key == K.KEY_RIGHT:
+                control.nudge_teleop(bearing=-0.1)
+            elif key == K.KEY_ENTER:
+                control.clear_teleop()
 
     if viewer_backend == "native":
-        viewer = NativeMujocoViewer(viewer_env, policy)
+        viewer_cls = _TeleopViewer if cfg.teleop else NativeMujocoViewer
+        viewer = viewer_cls(viewer_env, policy, key_callback=key_callback)
         _patch_world_free_camera(viewer)
         _force_viewer_realtime_1x(viewer)
         viewer.run(num_steps=rollout_steps)

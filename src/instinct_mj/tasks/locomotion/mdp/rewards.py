@@ -107,6 +107,80 @@ def joint_deviation_l1(
     return torch.sum(torch.abs(joint_error), dim=1)
 
 
+# Sagittal joints share the same axis direction on the left and right legs, so a
+# symmetric gait has the same long-run average angle on both sides.
+_SAGITTAL_JOINT_PAIRS = (
+    ("left_hip_pitch_joint", "right_hip_pitch_joint"),
+    ("left_knee_joint", "right_knee_joint"),
+    ("left_ankle_pitch_joint", "right_ankle_pitch_joint"),
+)
+
+
+def update_leg_symmetry_ema(
+    ema_left: torch.Tensor,
+    ema_right: torch.Tensor,
+    left: torch.Tensor,
+    right: torch.Tensor,
+    decay: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Smooth both legs and return the mean absolute difference."""
+    ema_left = decay * ema_left + (1.0 - decay) * left
+    ema_right = decay * ema_right + (1.0 - decay) * right
+    error = torch.mean(torch.abs(ema_left - ema_right), dim=-1)
+    return ema_left, ema_right, error
+
+
+class LegGaitSymmetry:
+    """Penalize one leg keeping a larger step than the other.
+
+    A normal step makes the left and right sagittal angles differ at one
+    instant. Their exponential moving averages still match when both legs use
+    the same stride. A right-leg lunge with the left leg only trailing keeps
+    the two averages apart.
+    """
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv):
+        self.decay = float(cfg.params.get("ema_decay", 0.99))
+        robot = env.scene[cfg.params.get("asset_name", "robot")]
+        self.robot = robot
+        name_to_index = {name: index for index, name in enumerate(robot.joint_names)}
+        left_ids = [name_to_index[left] for left, _right in _SAGITTAL_JOINT_PAIRS]
+        right_ids = [name_to_index[right] for _left, right in _SAGITTAL_JOINT_PAIRS]
+        self.left_ids = torch.tensor(left_ids, dtype=torch.long, device=env.device)
+        self.right_ids = torch.tensor(right_ids, dtype=torch.long, device=env.device)
+        num_joints = len(left_ids)
+        self.ema_left = torch.zeros(env.num_envs, num_joints, device=env.device)
+        self.ema_right = torch.zeros(env.num_envs, num_joints, device=env.device)
+        self.ready = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        left, right = self._joint_pos()
+        self.ema_left[env_ids] = left[env_ids]
+        self.ema_right[env_ids] = right[env_ids]
+        self.ready[env_ids] = True
+
+    def _joint_pos(self) -> tuple[torch.Tensor, torch.Tensor]:
+        joint_pos = self.robot.data.joint_pos
+        return joint_pos[:, self.left_ids], joint_pos[:, self.right_ids]
+
+    def __call__(self, env: ManagerBasedRlEnv, **_params) -> torch.Tensor:
+        del env
+        left, right = self._joint_pos()
+        fresh = ~self.ready
+        if bool(fresh.any()):
+            self.ema_left[fresh] = left[fresh]
+            self.ema_right[fresh] = right[fresh]
+            self.ready[fresh] = True
+        updated_left, updated_right, error = update_leg_symmetry_ema(
+            self.ema_left, self.ema_right, left, right, self.decay
+        )
+        self.ema_left = updated_left
+        self.ema_right = updated_right
+        return error
+
+
 def lin_vel_z_l2(
     env,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

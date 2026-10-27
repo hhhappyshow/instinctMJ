@@ -57,7 +57,7 @@ class G1FlatPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     log_interval: int = 10
     experiment_name: str = "g1_locomotion_flat"
 
-    load_run: object | None = None
+    load_run: str | None = None
 
     def __post_init__(self):
         self.resume = self.load_run is not None
@@ -66,3 +66,21 @@ class G1FlatPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
 
 def g1_locomotion_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
     return G1FlatPPORunnerCfg()
+
+
+def _rough_runner(experiment_name: str) -> InstinctRlOnPolicyRunnerCfg:
+    """Same optimizer, seed, and budget as the flat policy that already walks."""
+    cfg = G1FlatPPORunnerCfg()
+    cfg.experiment_name = experiment_name
+    cfg.seed = 42
+    cfg.max_iterations = 5000
+    cfg.save_interval = 500
+    return cfg
+
+
+def g1_locomotion_rough_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
+    return _rough_runner("g1_locomotion_rough")
+
+
+def g1_locomotion_rough_raycast_instinct_rl_cfg() -> InstinctRlOnPolicyRunnerCfg:
+    return _rough_runner("g1_locomotion_rough_raycast")

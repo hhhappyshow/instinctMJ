@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
 from enum import Enum
+from functools import partial
 from typing import Any
 
 
@@ -19,7 +20,8 @@ def class_to_dict(obj: Any) -> Any:
   ``!!python/object`` tags. The dump still succeeds, but the result can no
   longer be read back with ``yaml.safe_load``. Config trees here are full of
   such objects -- every ``class_type`` and every manager term ``func`` -- so
-  those are rendered as ``"module:qualname"`` strings instead.
+  those are rendered as ``"module:qualname"`` strings instead. A
+  ``functools.partial`` keeps its function plus the bound arguments.
   """
     if isinstance(obj, Enum):
         return class_to_dict(obj.value)
@@ -31,6 +33,12 @@ def class_to_dict(obj: Any) -> Any:
         return [class_to_dict(value) for value in obj]
     if isinstance(obj, list):
         return [class_to_dict(value) for value in obj]
+    if isinstance(obj, partial):
+        return {
+            "func": class_to_dict(obj.func),
+            "args": class_to_dict(obj.args),
+            "keywords": class_to_dict(obj.keywords),
+        }
     if callable(obj):
         return f"{obj.__module__}:{obj.__qualname__}"
     if isinstance(obj, (str, int, float, bool)) or obj is None:
