@@ -51,7 +51,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             wall_thickness=0.05,
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
-                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
+                    num_patches=50, patch_radius=0.20, max_height_diff=0.05
                 ),
             },
         ),
@@ -69,7 +69,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             wall_thickness=0.05,
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
-                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
+                    num_patches=50, patch_radius=0.20, max_height_diff=0.05
                 ),
             },
         ),
@@ -85,7 +85,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
                     num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    patch_radius=0.20,
                     max_height_diff=0.05,
                     x_range=(3.7, 3.7),
                     y_range=(-0.0, 0.0),
@@ -112,7 +112,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
                     num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    patch_radius=0.20,
                     max_height_diff=0.05,
                     x_range=(3.7, 3.7),
                     y_range=(-0.0, 0.0),
@@ -139,7 +139,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
                     num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    patch_radius=0.20,
                     max_height_diff=0.05,
                     x_range=(3.7, 3.7),
                     y_range=(-0.0, 0.0),
@@ -166,7 +166,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
                     num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    patch_radius=0.20,
                     max_height_diff=0.05,
                     x_range=(3.7, 3.7),
                     y_range=(-0.0, 0.0),
@@ -193,7 +193,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
                     num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    patch_radius=0.20,
                     max_height_diff=0.05,
                     x_range=(3.7, 3.7),
                     y_range=(-0.0, 0.0),
@@ -221,7 +221,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             ),
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
-                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
+                    num_patches=50, patch_radius=0.20, max_height_diff=0.05
                 ),
             },
         ),
@@ -240,7 +240,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             wall_height=5.0,
             wall_thickness=0.05,
             flat_patch_sampling={
-                "target": FlatPatchSamplingCfg(num_patches=50, patch_radius=[0.05, 0.10, 0.15], max_height_diff=0.05),
+                "target": FlatPatchSamplingCfg(num_patches=50, patch_radius=0.15, max_height_diff=0.05),
             },
         ),
         "hf_pyramid_slope_inv": PerlinInvertedPyramidSlopedTerrainCfg(
@@ -261,7 +261,7 @@ ROUGH_TERRAINS_CFG = FiledTerrainGeneratorCfg(
             ),
             flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
-                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
+                    num_patches=50, patch_radius=0.20, max_height_diff=0.05
                 ),
             },
         ),
