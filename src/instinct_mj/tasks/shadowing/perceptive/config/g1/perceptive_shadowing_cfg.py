@@ -388,8 +388,13 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
             terrain_cfg = self.scene.terrain.terrain_generator.sub_terrains["motion_matched"]
             terrain_cfg.path = motion_buffer.path
             terrain_cfg.metadata_yaml = motion_buffer.metadata_yaml
-            self.scene.terrain.terrain_generator.num_rows = 1
-            self.scene.terrain.terrain_generator.num_cols = 1
+            # One terrain row per terrain of the dataset (same as scripts/supermimic/evaluate.py) so that every motion
+            # has origins: with a single row, a reset silently resamples any motion of the other terrains back onto
+            # the built one, which would break the play Left/Right motion switching.
+            with open(motion_buffer.metadata_yaml, encoding="utf-8") as f:
+                play_metadata = yaml.safe_load(f)
+            generator = self.scene.terrain.terrain_generator
+            generator.curriculum, generator.num_rows, generator.num_cols = True, len(play_metadata["terrains"]), 1
         self.run_name = self.run_name.replace("_concatMotionBins", "_independentMotionBins")
         # self.scene.motion_reference.motion_buffers.pop(MOTION_NAME)
         # self.scene.motion_reference.motion_buffers["AMASSMotion"] = AMASSMotionCfg()
