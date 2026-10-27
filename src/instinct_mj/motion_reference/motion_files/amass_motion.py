@@ -205,6 +205,32 @@ class AmassMotion(MotionBuffer):
             dtype=torch.bool,
         )
 
+    def set_env_motion_override(self, env_ids: Sequence[int] | torch.Tensor, motion_index: int) -> None:
+        """Pin the motion selection of the given envs to ``motion_index``; the pin survives resets until cleared."""
+        if not (0 <= int(motion_index) < self.num_trajectories):
+            raise ValueError(f"motion_index {motion_index} out of range [0, {self.num_trajectories})")
+        env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+        if not hasattr(self, "_motion_selection_override"):
+            self._motion_selection_override: dict[int, int] = {}
+        for assigned_id in assigned_ids.tolist():
+            self._motion_selection_override[int(assigned_id)] = int(motion_index)
+        # keep the current selection consistent so that readers (e.g. motion identifiers) see the override at once
+        if hasattr(self, "_assigned_env_motion_selection"):
+            self._assigned_env_motion_selection[assigned_ids] = int(motion_index)
+
+    def clear_env_motion_override(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
+        """Remove the motion-selection overrides (all of them when ``env_ids`` is None)."""
+        if not hasattr(self, "_motion_selection_override"):
+            return
+        if env_ids is None:
+            self._motion_selection_override = {}
+            return
+        env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+        for assigned_id in assigned_ids.tolist():
+            self._motion_selection_override.pop(int(assigned_id), None)
+
     def fill_init_reference_state(
         self,
         env_ids: Sequence[int] | torch.Tensor,
@@ -863,6 +889,11 @@ class AmassMotion(MotionBuffer):
             len(assigned_ids),
             replacement=True,
         ).to(self.buffer_device)
+        overrides = getattr(self, "_motion_selection_override", None)
+        if overrides:
+            for assigned_id, motion_index in overrides.items():
+                if int(assigned_id) in assigned_ids.tolist():
+                    self._assigned_env_motion_selection[assigned_id] = int(motion_index)
 
     def _sample_env_motion_start_time(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
         """Sample the start time for the assigned envs. (at reset)

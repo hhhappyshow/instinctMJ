@@ -34,7 +34,7 @@ uv sync
 
 Download from the [SuperMimic release](https://github.com/project-instinct/InstinctMJ/releases/latest):
 
-- `20251116_50cm_kneeClimbStep1.zip`: the dataset. Unzip into `~/Datasets/` (the default `MOTION_FOLDER` in
+- `20251116_50cm_kneeClimbStep1.zip`: the dataset. The repository ships it at `data/20251116_50cm_kneeClimbStep1` (the default `MOTION_FOLDER` in
   `src/instinct_mj/tasks/shadowing/perceptive/config/g1/perceptive_shadowing_cfg.py`).
 - The trained policy checkpoint, its ONNX export and the world-model state (to resume training).
 
@@ -44,7 +44,7 @@ Download from the [SuperMimic release](https://github.com/project-instinct/Insti
 # train
 uv run instinct-train Instinct-Perceptive-Shadowing-G1-v0 --num-envs 1024
 # evaluate (success rate per motion)
-uv run python -m instinct_mj.scripts.supermimic.evaluate --checkpoint <run>/model_<it>.pt --motion-folder ~/Datasets/20251116_50cm_kneeClimbStep1 --num-envs 128
+uv run python -m instinct_mj.scripts.supermimic.evaluate --checkpoint <run>/model_<it>.pt --motion-folder data/20251116_50cm_kneeClimbStep1 --num-envs 128
 # web viewer (viser)
 uv run python webplay_supermimic.py <run>/model_<it>.pt
 # play + ONNX export

@@ -114,6 +114,32 @@ class MotionReferenceManager(Sensor):
             return
         self._timestamp += dt
 
+    def cycle_env_motion(
+        self,
+        env_ids: Sequence[int] | torch.Tensor,
+        offset: int,
+    ) -> list[str]:
+        """Cycle the motion selection of the given envs by ``offset`` (wraps around) and pin it across resets.
+
+        Returns the motion identifiers of the new selection per env, in the order of ``env_ids``.
+        """
+        identifiers: list[str] = []
+        for buffer in self._motion_buffers.values():
+            env_ids_tensor = torch.as_tensor(env_ids, device=buffer.device, dtype=torch.long)
+            assigned_mask = buffer.env_ids_is_assigned(env_ids_tensor)
+            assigned_env_ids = [
+                int(env_id) for env_id, is_assigned in zip(env_ids_tensor.tolist(), assigned_mask.tolist()) if is_assigned
+            ]
+            if len(assigned_env_ids) == 0:
+                continue
+            current = buffer.assigned_env_motion_selection[
+                buffer.env_ids_to_assigned_ids(env_ids_tensor[assigned_mask])
+            ].tolist()
+            for env_id, motion_index in zip(assigned_env_ids, current):
+                buffer.set_env_motion_override([env_id], (int(motion_index) + offset) % buffer.num_trajectories)
+            identifiers.extend(buffer.get_current_motion_identifiers(env_ids_tensor[assigned_mask]))
+        return identifiers
+
     def _compute_data(self) -> MotionReferenceData:
         """Return the motion reference data (mjlab Sensor cache interface)."""
         self._update_outdated_buffers()

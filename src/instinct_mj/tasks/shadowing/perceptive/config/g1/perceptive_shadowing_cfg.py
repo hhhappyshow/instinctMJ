@@ -39,8 +39,11 @@ G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 # The folder should contain the motion files and a `metadata.yaml`.
 # The dataset used for the released SuperMimic policy is `20251116_50cm_kneeClimbStep1.zip` of the
 # `supermimic-v0.1` release (https://github.com/project-instinct/InstinctMJ/releases/tag/supermimic-v0.1);
-# unzip it into `~/Datasets/`.
-MOTION_FOLDER = "~/Datasets/20251116_50cm_kneeClimbStep1"
+# it lives in the repository at `data/20251116_50cm_kneeClimbStep1`.
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../../../../../..")
+)
+MOTION_FOLDER = os.path.join(_REPO_ROOT, "data", "20251116_50cm_kneeClimbStep1")
 
 # NOTE: Optional play override for perceptive shadowing.
 # Leave this as `None` to reuse `MOTION_FOLDER`, or set it to another local

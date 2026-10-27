@@ -67,7 +67,7 @@ noise models (contour, artifacts, stereo, blur, too-close) are enabled in `G1Per
 
 ## Usage
 
-The dataset is the task's `MOTION_FOLDER` (default `~/Datasets/20251116_50cm_kneeClimbStep1`, download it from the
+The dataset is the task's `MOTION_FOLDER` (the repository ships it at `data/20251116_50cm_kneeClimbStep1`; the original release is at
 [release](https://github.com/project-instinct/InstinctMJ/releases/latest)).
 
 ```bash

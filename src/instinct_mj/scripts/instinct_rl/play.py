@@ -52,6 +52,7 @@ class PlayConfig:
     onnx_model_dir: str | None = None
     no_resume: bool = False
     no_terminations: bool = False
+    motion_keys: bool = False
     teleop: bool = False
 
 
@@ -536,6 +537,29 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
 
     rollout_steps = _resolve_rollout_steps(cfg)
     key_callback = None
+    motion_key_state: dict = {}
+    if cfg.motion_keys:
+        motion_manager = env.unwrapped.scene.sensors["motion_reference"]
+        if viewer_backend != "native":
+            print("[INFO] Motion keys require --viewer native.")
+        print("[INFO] Left/Right switches the reference motion (previous/next) and resets the env.")
+
+        def key_callback(key: int) -> None:
+            from mjlab.viewer.native import keys as K
+
+            if key not in (K.KEY_LEFT, K.KEY_RIGHT):
+                return
+            offset = -1 if key == K.KEY_LEFT else 1
+            try:
+                names = motion_manager.cycle_env_motion(range(env.unwrapped.num_envs), offset)
+                print(f"[INFO] Switched reference motion to: {names}")
+            except Exception as e:  # noqa: BLE001 - keep the viewer alive on bad switches
+                print(f"[WARN] Motion switch failed: {e}")
+                return
+            viewer = motion_key_state.get("viewer")
+            if viewer is not None:
+                viewer.request_reset()
+
     if cfg.teleop:
         control = env.unwrapped.action_manager.get_term("navigation")
         control.enable_teleop()
@@ -561,6 +585,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
     if viewer_backend == "native":
         viewer_cls = _TeleopViewer if cfg.teleop else NativeMujocoViewer
         viewer = viewer_cls(viewer_env, policy, key_callback=key_callback)
+        motion_key_state["viewer"] = viewer
         _patch_world_free_camera(viewer)
         _force_viewer_realtime_1x(viewer)
         viewer.run(num_steps=rollout_steps)
