@@ -68,6 +68,37 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 
 
 @dataclass(kw_only=True)
+class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
+    """PPO algorithm cfg, kept for the RayCaster task (the shadowing task trains with SuperMimic)."""
+
+    class_name: str = "PPO"
+
+    value_loss_coef: float = 1.0
+
+    use_clipped_value_loss: bool = True
+
+    clip_param: float = 0.2
+
+    entropy_coef: float = 0.005
+
+    num_learning_epochs: int = 5
+
+    num_mini_batches: int = 4
+
+    learning_rate: float = 1e-3
+
+    schedule: str = "adaptive"
+
+    gamma: float = 0.99
+
+    lam: float = 0.95
+
+    desired_kl: float = 0.01
+
+    max_grad_norm: float = 1.0
+
+
+@dataclass(kw_only=True)
 class NormalizersCfg:
     policy: InstinctRlNormalizerCfg = field(default_factory=lambda: InstinctRlNormalizerCfg())
     critic: InstinctRlNormalizerCfg = field(default_factory=lambda: InstinctRlNormalizerCfg())
