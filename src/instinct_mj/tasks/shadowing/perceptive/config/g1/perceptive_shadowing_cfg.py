@@ -355,7 +355,9 @@ class G1PerceptiveShadowingEnvCfg_PLAY(G1PerceptiveShadowingEnvCfg):
             distance=2.1213,
             elevation=45.0,
             azimuth=0.0,
-            origin_type=ViewerConfig.OriginType.WORLD,
+            # Track the robot torso so the camera follows it across resets and motion switches
+            # instead of staying at the global origin.
+            origin_type=ViewerConfig.OriginType.ASSET_BODY,
             entity_name="robot",
             body_name="torso_link",
         )
