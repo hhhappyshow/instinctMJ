@@ -43,3 +43,7 @@ diag_fix_test.py
 check_ref*.py
 webplay_hoi.py
 *.slurm
+
+# Local training data and pretrained checkpoints (not for git)
+data/
+pretrained/
